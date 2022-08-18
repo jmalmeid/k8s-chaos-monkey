@@ -72,7 +72,7 @@ func (in *PodChaosMonkeyConditions) DeepCopyInto(out *PodChaosMonkeyConditions) 
 	*out = *in
 	if in.MinRunning != nil {
 		in, out := &in.MinRunning, &out.MinRunning
-		*out = new(float64)
+		*out = new(int32)
 		**out = **in
 	}
 	if in.MinPods != nil {

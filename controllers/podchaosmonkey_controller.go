@@ -86,18 +86,18 @@ func (r *PodChaosMonkeyReconciler) GetPodChaosMonkeyList(ctx context.Context, na
 }
 
 // Get List of ReplicaSet Objects
-func (r *PodChaosMonkeyReconciler) GetListReplicaSet(ctx context.Context, dep *appsv1.Deployment) []appsv1.ReplicaSet {
+func (r *PodChaosMonkeyReconciler) GetListReplicaSet(ctx context.Context, name, namespace, kind, apiVersion string) []appsv1.ReplicaSet {
 	returnList := []appsv1.ReplicaSet{}
 	repList := &appsv1.ReplicaSetList{}
 	lo := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-		client.InNamespace(dep.ObjectMeta.Namespace),
+		client.InNamespace(namespace),
 	})
 	err := r.Client.List(context.TODO(), repList, lo)
 	if err != nil {
 		return returnList
 	}
 	for _, rep := range repList.Items {
-		if rep.ObjectMeta.OwnerReferences[0].Name == dep.ObjectMeta.Name && rep.ObjectMeta.OwnerReferences[0].Kind == dep.Kind && rep.ObjectMeta.OwnerReferences[0].APIVersion == dep.APIVersion &&
+		if rep.ObjectMeta.OwnerReferences[0].Name == name && rep.ObjectMeta.OwnerReferences[0].Kind == kind && rep.ObjectMeta.OwnerReferences[0].APIVersion == apiVersion &&
 			rep.Status.ReadyReplicas > 0 {
 			returnList = append(returnList, rep)
 		}
@@ -117,8 +117,21 @@ func (r *PodChaosMonkeyReconciler) GetListPodsRunning(ctx context.Context, name,
 		return returnList
 	}
 	for _, pod := range podList.Items {
-		if pod.ObjectMeta.OwnerReferences[0].Name == name && pod.ObjectMeta.OwnerReferences[0].Kind == kind && pod.ObjectMeta.OwnerReferences[0].APIVersion == apiVersion && pod.Status.Phase == "Running" {
-			returnList = append(returnList, pod)
+		if pod.ObjectMeta.OwnerReferences[0].Kind == "ReplicaSet" {
+			repList := r.GetListReplicaSet(ctx, name, namespace, kind, apiVersion)
+			for _, rep := range repList {
+				if rep.GetName() == pod.ObjectMeta.OwnerReferences[0].Name &&
+					rep.Kind == pod.ObjectMeta.OwnerReferences[0].Kind &&
+					rep.APIVersion == pod.ObjectMeta.OwnerReferences[0].APIVersion &&
+					pod.Status.Phase == "Running" {
+					returnList = append(returnList, pod)
+				}
+			}
+		} else {
+			if pod.ObjectMeta.OwnerReferences[0].Name == name && pod.ObjectMeta.OwnerReferences[0].Kind == kind &&
+				pod.ObjectMeta.OwnerReferences[0].APIVersion == apiVersion && pod.Status.Phase == "Running" {
+				returnList = append(returnList, pod)
+			}
 		}
 	}
 	return returnList
@@ -153,7 +166,7 @@ func (r *PodChaosMonkeyReconciler) ReconcileChaos(ctx context.Context, req ctrl.
 		currTime := time.Now()
 		for _, pod := range podList {
 			duration := currTime.Sub(pod.ObjectMeta.CreationTimestamp.Time)
-			if duration.Hours() >= *chaos.Spec.Conditions.MinRunning {
+			if int32(duration.Minutes()) >= *chaos.Spec.Conditions.MinRunning {
 				newList = append(newList, pod)
 			}
 		}
@@ -202,7 +215,7 @@ func (r *PodChaosMonkeyReconciler) ReconcileStatefulSet(ctx context.Context, req
 func (r *PodChaosMonkeyReconciler) ReconcileDeployment(ctx context.Context, req ctrl.Request, dep *appsv1.Deployment) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	log.Info("Reconciling PodChaosMonkey", "Process Deployment", req.Name)
-	repList := r.GetListReplicaSet(ctx, dep)
+	repList := r.GetListReplicaSet(ctx, dep.GetName(), dep.GetNamespace(), dep.Kind, dep.APIVersion)
 	for _, rep := range repList {
 		ret, err := r.ReconcileObject(ctx, req, rep.ObjectMeta.Name, rep.ObjectMeta.Namespace, rep.Kind, rep.APIVersion)
 		if err != nil {
@@ -287,6 +300,7 @@ func (r *PodChaosMonkeyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PodChaosMonkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	//TODO set kubeconfig
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&testingv1.PodChaosMonkey{}).
 		Watches(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForObject{}).

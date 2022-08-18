@@ -29,7 +29,7 @@ type PodChaosMonkeySpec struct {
 	TargetRef *CrossVersionObjectReference `json:"targetRef" protobuf:"bytes,1,name=targetRef"`
 
 	// Describes the rules on how chaos testing are applied to the pods.
-	// If not specified, all fields in the `PodChaosMonkeyPolicy` are set to their
+	// If not specified, all fields in the `PodChaosMonkeyConditions` are set to their
 	// default values.
 	// +optional
 	Conditions *PodChaosMonkeyConditions `json:"conditions,omitempty" protobuf:"bytes,2,opt,name=conditions"`
@@ -38,19 +38,19 @@ type PodChaosMonkeySpec struct {
 // CrossVersionObjectReference contains enough information to let you identify the referred resource.
 type CrossVersionObjectReference struct {
 	// Kind of the referent; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
-	Kind string
+	Kind string `json:"kind" protobuf:"bytes,1,name=kind"`
 	// Name of the referent; More info: http://kubernetes.io/docs/user-guide/identifiers#names
-	Name string
-	// API version of the referent
 	// +optional
-	APIVersion string
+	Name string `json:"name,omitempty" protobuf:"bytes,2,opt,name=name"`
+	// API version of the referent
+	APIVersion string `json:"apiVersion" protobuf:"bytes,3,name=apiVersion"`
 }
 
 // PodChaosMonkeyPolicy describes the rules on how to apply chaos pod eviction.
 type PodChaosMonkeyConditions struct {
-	// Minimal time in hours that has to be running
+	// Minimal time in minutes that has to be running
 	// +optional
-	MinRunning *float64 `json:"minRunning,omitempty" protobuf:"varint,1,opt,name=minRunning"`
+	MinRunning *int32 `json:"minRunning,omitempty" protobuf:"varint,1,opt,name=minRunning"`
 	// Minimal number of pods which need to be alive
 	// +optional
 	MinPods *int32 `json:"minPods,omitempty" protobuf:"varint,2,opt,name=minPods"`

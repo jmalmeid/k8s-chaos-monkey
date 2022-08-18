@@ -1,0 +1,33 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - testing.chaos.io
+  resources:
+  - podchaosmonkeys
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - testing.chaos.io
+  resources:
+  - podchaosmonkeys/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - testing.chaos.io
+  resources:
+  - podchaosmonkeys/status
+  verbs:
+  - get
+  - patch
+  - update
