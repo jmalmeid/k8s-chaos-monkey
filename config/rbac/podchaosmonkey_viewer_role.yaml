@@ -1,0 +1,20 @@
+# permissions for end users to view podchaosmonkeys.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: podchaosmonkey-viewer-role
+rules:
+- apiGroups:
+  - testing.chaos.io
+  resources:
+  - podchaosmonkeys
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - testing.chaos.io
+  resources:
+  - podchaosmonkeys/status
+  verbs:
+  - get

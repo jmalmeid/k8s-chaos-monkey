@@ -1,0 +1,16 @@
+domain: chaos.io
+layout:
+- go.kubebuilder.io/v3
+projectName: k8s-chaos-monkey
+repo: chaos.io/testing
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: chaos.io
+  group: testing
+  kind: PodChaosMonkey
+  path: chaos.io/testing/api/v1
+  version: v1
+version: "3"

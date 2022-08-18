@@ -1,0 +1,6 @@
+apiVersion: testing.chaos.io/v1
+kind: PodChaosMonkey
+metadata:
+  name: podchaosmonkey-sample
+spec:
+  # TODO(user): Add fields here
