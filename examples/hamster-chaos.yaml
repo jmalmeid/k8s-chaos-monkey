@@ -1,0 +1,12 @@
+apiVersion: "testing.chaos.io/v1"
+kind: PodChaosMonkey
+metadata:
+  name: hamster-chaos
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: hamster
+  conditions:
+    minRunning: 1
+    minPods: 2
