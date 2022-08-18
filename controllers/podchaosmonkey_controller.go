@@ -23,6 +23,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -31,11 +33,17 @@ import (
 
 	testingv1 "chaos.io/testing/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	apiv1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // PodChaosMonkeyReconciler reconciles a PodChaosMonkey object
 type PodChaosMonkeyReconciler struct {
+	kubeclient    kubernetes.Interface
+	eventRecorder record.EventRecorder
 	client.Client
 	Scheme *runtime.Scheme
 }
@@ -86,7 +94,7 @@ func (r *PodChaosMonkeyReconciler) GetListReplicaSet(ctx context.Context, dep *a
 	})
 	err := r.Client.List(context.TODO(), repList, lo)
 	if err != nil {
-		return nil
+		return returnList
 	}
 	for _, rep := range repList.Items {
 		if rep.ObjectMeta.OwnerReferences[0].Name == dep.ObjectMeta.Name && rep.ObjectMeta.OwnerReferences[0].Kind == dep.Kind && rep.ObjectMeta.OwnerReferences[0].APIVersion == dep.APIVersion &&
@@ -106,7 +114,7 @@ func (r *PodChaosMonkeyReconciler) GetListPodsRunning(ctx context.Context, name,
 	})
 	err := r.Client.List(context.TODO(), podList, lo)
 	if err != nil {
-		return nil
+		return returnList
 	}
 	for _, pod := range podList.Items {
 		if pod.ObjectMeta.OwnerReferences[0].Name == name && pod.ObjectMeta.OwnerReferences[0].Kind == kind && pod.ObjectMeta.OwnerReferences[0].APIVersion == apiVersion && pod.Status.Phase == "Running" {
@@ -119,28 +127,54 @@ func (r *PodChaosMonkeyReconciler) GetListPodsRunning(ctx context.Context, name,
 // Reconcile Object
 // Find and process a PodChaosMonkey Object, that matchs kind of object
 func (r *PodChaosMonkeyReconciler) ReconcileObject(ctx context.Context, req ctrl.Request, name, namespace, kind, apiVersion string) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	// log := log.FromContext(ctx)
 
 	chaosList := r.GetPodChaosMonkeyList(ctx, name, namespace, kind, apiVersion)
 	if chaosList != nil {
 		for _, chaos := range chaosList.Items {
-			podList := r.GetListPodsRunning(ctx, name, namespace, kind, apiVersion)
-			if int32(len(podList)) >= *chaos.Spec.Conditions.MinPods {
-				newList := []corev1.Pod{}
-				currTime := time.Now()
-				for _, pod := range podList {
-					duration := currTime.Sub(pod.ObjectMeta.CreationTimestamp.Time)
-					if duration.Hours() >= *chaos.Spec.Conditions.MinRunning {
-						newList = append(newList, pod)
-					}
-				}
-				if len(newList) > 0 {
-					random := rand.Intn(len(newList))
-					pod := newList[random]
-					log.Info("Reconciling PodChaosMonkey", "Process", req.Name, "Going to Evict Pod", pod.ObjectMeta.Name)
-				}
-
+			ret, err := r.ReconcileChaos(ctx, req, chaos, name, namespace, kind, apiVersion)
+			if err != nil {
+				return ret, err
 			}
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// Reconcile Object
+// Find and process a PodChaosMonkey Object, that matchs kind of object
+func (r *PodChaosMonkeyReconciler) ReconcileChaos(ctx context.Context, req ctrl.Request, chaos testingv1.PodChaosMonkey, name, namespace, kind, apiVersion string) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	podList := r.GetListPodsRunning(ctx, name, namespace, kind, apiVersion)
+	if int32(len(podList)) >= *chaos.Spec.Conditions.MinPods {
+		newList := []corev1.Pod{}
+		currTime := time.Now()
+		for _, pod := range podList {
+			duration := currTime.Sub(pod.ObjectMeta.CreationTimestamp.Time)
+			if duration.Hours() >= *chaos.Spec.Conditions.MinRunning {
+				newList = append(newList, pod)
+			}
+		}
+		if len(newList) > 0 {
+			random := rand.Intn(len(newList))
+			podToEvict := newList[random]
+			log.Info("Reconciling PodChaosMonkey", "Process", req.Name, "Going to Evict Pod", podToEvict.ObjectMeta.Name)
+
+			eviction := &policyv1.Eviction{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: podToEvict.Namespace,
+					Name:      podToEvict.Name,
+				},
+			}
+			err := r.kubeclient.CoreV1().Pods(podToEvict.Namespace).Evict(context.TODO(), eviction)
+			if err != nil {
+				log.Error(err, "Failed to Evict Pod", "Pod", podToEvict.ObjectMeta.Name)
+				return ctrl.Result{}, err
+			}
+			r.eventRecorder.Event(&podToEvict, apiv1.EventTypeNormal, "EvictedByChaosMonkey",
+				"Pod was evicted by Chaos Monkey.")
 		}
 	}
 	return ctrl.Result{}, nil
@@ -170,17 +204,44 @@ func (r *PodChaosMonkeyReconciler) ReconcileDeployment(ctx context.Context, req 
 	log.Info("Reconciling PodChaosMonkey", "Process Deployment", req.Name)
 	repList := r.GetListReplicaSet(ctx, dep)
 	for _, rep := range repList {
-		r.ReconcileObject(ctx, req, rep.ObjectMeta.Name, rep.ObjectMeta.Namespace, rep.Kind, rep.APIVersion)
+		ret, err := r.ReconcileObject(ctx, req, rep.ObjectMeta.Name, rep.ObjectMeta.Namespace, rep.Kind, rep.APIVersion)
+		if err != nil {
+			return ret, err
+		}
 	}
 	return ctrl.Result{}, nil
 }
 
 // Reconcile PodChaosMonkey
 // Find and process a PodChaosMonkey Object, that matchs kind of object
-func (r *PodChaosMonkeyReconciler) ReconcilePodChaosMonkey(ctx context.Context, req ctrl.Request, chaos *testingv1.PodChaosMonkey) (ctrl.Result, error) {
+func (r *PodChaosMonkeyReconciler) ReconcilePodChaosMonkey(ctx context.Context, req ctrl.Request, chaos testingv1.PodChaosMonkey) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	log.Info("Reconciling PodChaosMonkey", "Process PodChaosMonkey", req.Name)
-	//TODO Get List Objects
+
+	objList := &unstructured.UnstructuredList{
+		Object: map[string]interface{}{
+			"kind":       chaos.Spec.TargetRef.Kind,
+			"apiVersion": chaos.Spec.TargetRef.APIVersion,
+		},
+	}
+	lo := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+		//client.MatchingFields{"metadata.name": vpaName},
+		client.InNamespace(chaos.ObjectMeta.Namespace),
+	})
+	err := r.Client.List(context.TODO(), objList, lo)
+	if err != nil {
+		log.Error(err, "Failed to list objects", "Kind", chaos.Spec.TargetRef.Kind, "Namespace", chaos.ObjectMeta.Namespace)
+		return ctrl.Result{}, err
+	}
+	for _, obj := range objList.Items {
+		if chaos.Spec.TargetRef.Name == "" || chaos.Spec.TargetRef.Name == obj.GetName() {
+			ret, err := r.ReconcileChaos(ctx, req, chaos, obj.GetName(), obj.GetNamespace(), obj.GetKind(), obj.GetAPIVersion())
+			if err != nil {
+				return ret, err
+			}
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -221,7 +282,7 @@ func (r *PodChaosMonkeyReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 	log.Info("Reconciling PodChaosMonkey", "Process PodChaosMonkey", req.Name)
-	return r.ReconcilePodChaosMonkey(ctx, req, chaosMonkey)
+	return r.ReconcilePodChaosMonkey(ctx, req, *chaosMonkey)
 }
 
 // SetupWithManager sets up the controller with the Manager.
