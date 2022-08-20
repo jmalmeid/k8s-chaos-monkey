@@ -210,6 +210,11 @@ func (r *PodChaosMonkeyReconciler) ReconcileChaos(ctx context.Context, chaos tes
 				log.Error(err, "Failed to Evict Pod", "Pod", podToEvict.ObjectMeta.Name)
 				return ctrl.Result{}, err
 			}
+			log.Info("Reconciling PodChaosMonkey", "Going to Record Event", podToEvict.ObjectMeta.Name)
+			r.EventRecorder.Event(&podToEvict, apiv1.EventTypeNormal, "EvictedByChaosMonkey",
+				"Pod was evicted by Chaos Monkey.")
+
+			//Update Status
 			chaos.Status.LastEvictionAt = &metav1.Time{Time: time.Now()}
 			var num int32 = 1
 			if chaos.Status.NumberOfEvictions != nil {
@@ -217,9 +222,6 @@ func (r *PodChaosMonkeyReconciler) ReconcileChaos(ctx context.Context, chaos tes
 			}
 			chaos.Status.NumberOfEvictions = &num
 			r.Client.Status().Update(ctx, &chaos)
-			log.Info("Reconciling PodChaosMonkey", "Going to Record Event", podToEvict.ObjectMeta.Name)
-			r.EventRecorder.Event(&podToEvict, apiv1.EventTypeNormal, "EvictedByChaosMonkey",
-				"Pod was evicted by Chaos Monkey.")
 		}
 	}
 	return ctrl.Result{}, nil
@@ -279,7 +281,7 @@ func (r *PodChaosMonkeyReconciler) Runnable(mgr ctrl.Manager, wg *sync.WaitGroup
 
 	// while true loop
 	for {
-		log.Info("Reconciling PodChaosMonkey", "Runnable PodChaosMonkey", "Get PodChaosMonkey List")
+		log.Info("Runnable PodChaosMonkey", "PodChaosMonkey", "Get PodChaosMonkey List")
 		chaosList := &testingv1.PodChaosMonkeyList{}
 		lo := (&client.ListOptions{}).ApplyOptions([]client.ListOption{})
 		err := r.Client.List(ctx, chaosList, lo)
