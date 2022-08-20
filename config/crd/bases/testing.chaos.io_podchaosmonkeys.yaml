@@ -12,6 +12,8 @@ spec:
     kind: PodChaosMonkey
     listKind: PodChaosMonkeyList
     plural: podchaosmonkeys
+    shortNames:
+    - chaos
     singular: podchaosmonkey
   scope: Namespaced
   versions:
@@ -40,14 +42,32 @@ spec:
                   to the pods. If not specified, all fields in the `PodChaosMonkeyConditions`
                   are set to their default values.
                 properties:
+                  gracePeriodSeconds:
+                    description: Grace period for pod termination
+                    format: int64
+                    type: integer
+                  maxTimeRandom:
+                    description: Minimal Random time in minutes between two consecutive
+                      pod evictions
+                    format: int32
+                    type: integer
                   minPods:
                     description: Minimal number of pods which need to be alive
                     format: int32
                     type: integer
-                  minRunning:
+                  minTimeRandom:
+                    description: Minimal Random time in minutes between two consecutive
+                      pod evictions
+                    format: int32
+                    type: integer
+                  minTimeRunning:
                     description: Minimal time in minutes that has to be running
                     format: int32
                     type: integer
+                required:
+                - maxTimeRandom
+                - minTimeRandom
+                - minTimeRunning
                 type: object
               targetRef:
                 description: TargetRef points to the controller managing the set of
@@ -71,6 +91,15 @@ spec:
             type: object
           status:
             description: PodChaosMonkeyStatus defines the observed state of PodChaosMonkey
+            properties:
+              lastEvictionAt:
+                description: Last time the chaos monkey evicted a pod
+                format: date-time
+                type: string
+              numberOfEvictions:
+                description: Number of times the chaos monkey has been executed
+                format: int32
+                type: integer
             type: object
         type: object
     served: true

@@ -8,5 +8,7 @@ spec:
     kind: Deployment
     name: hamster
   conditions:
-    minRunning: 1
     minPods: 2
+    minTimeRunning: 10
+    minTimeRandom: 10
+    maxTimeRandom: 30

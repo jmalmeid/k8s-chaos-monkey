@@ -48,23 +48,32 @@ type CrossVersionObjectReference struct {
 
 // PodChaosMonkeyPolicy describes the rules on how to apply chaos pod eviction.
 type PodChaosMonkeyConditions struct {
-	// Minimal time in minutes that has to be running
-	// +optional
-	MinRunning *int32 `json:"minRunning,omitempty" protobuf:"varint,1,opt,name=minRunning"`
 	// Minimal number of pods which need to be alive
 	// +optional
-	MinPods *int32 `json:"minPods,omitempty" protobuf:"varint,2,opt,name=minPods"`
+	MinPods *int32 `json:"minPods,omitempty" protobuf:"varint,1,opt,name=minPods"`
+	// Minimal time in minutes that has to be running
+	MinTimeRunning *int32 `json:"minTimeRunning" protobuf:"varint,2,name=minRunning"`
+	// Minimal Random time in minutes between two consecutive pod evictions
+	MinTimeRandom *int32 `json:"minTimeRandom" protobuf:"varint,3,name=minTimeRandom"`
+	// Minimal Random time in minutes between two consecutive pod evictions
+	MaxTimeRandom *int32 `json:"maxTimeRandom" protobuf:"varint,4,name=maxTimeRandom"`
+	// Grace period for pod termination
+	// +optional
+	GracePeriodSeconds *int64 `json:"gracePeriodSeconds,omitempty" protobuf:"varint,5,opt,name=gracePeriodSeconds"`
 }
 
 // PodChaosMonkeyStatus defines the observed state of PodChaosMonkey
 type PodChaosMonkeyStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Last time the chaos monkey evicted a pod
+	LastEvictionAt *metav1.Time `json:"lastEvictionAt,omitempty" protobuf:"bytes,1,opt,name=lastEvictionAt"`
+	// Number of times the chaos monkey has been executed
+	NumberOfEvictions *int32 `json:"numberOfEvictions,omitempty" protobuf:"varint,2,opt,name=numberOfEvictions"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +kubebuilder:resource:shortName=chaos
 // PodChaosMonkey is the Schema for the podchaosmonkeys API
 type PodChaosMonkey struct {
 	metav1.TypeMeta   `json:",inline"`

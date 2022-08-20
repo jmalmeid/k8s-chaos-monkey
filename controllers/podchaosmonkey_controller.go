@@ -19,31 +19,29 @@ package controllers
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	testingv1 "chaos.io/testing/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // PodChaosMonkeyReconciler reconciles a PodChaosMonkey object
 type PodChaosMonkeyReconciler struct {
-	kubeclient    kubernetes.Interface
-	eventRecorder record.EventRecorder
+	record.EventRecorder
+	KubeClient kubernetes.Interface
 	client.Client
 	Scheme *runtime.Scheme
 }
@@ -62,21 +60,21 @@ func (r *PodChaosMonkeyReconciler) GetPodChaosMonkeyList(ctx context.Context, na
 		client.MatchingFields{"spec.targetRef.apiVersion": apiVersion},
 		client.InNamespace(namespace),
 	})
-	err := r.Client.List(context.TODO(), chaosList, lo)
+	err := r.Client.List(ctx, chaosList, lo)
 	if err != nil {
 		lo = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 			client.MatchingFields{"spec.targetRef.kind": kind},
 			client.MatchingFields{"spec.targetRef.name": name},
 			client.InNamespace(namespace),
 		})
-		err := r.Client.List(context.TODO(), chaosList, lo)
+		err := r.Client.List(ctx, chaosList, lo)
 		if err != nil {
 			lo = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 				client.MatchingFields{"spec.targetRef.kind": kind},
 				client.MatchingFields{"spec.targetRef.apiVersion": apiVersion},
 				client.InNamespace(namespace),
 			})
-			err := r.Client.List(context.TODO(), chaosList, lo)
+			err := r.Client.List(ctx, chaosList, lo)
 			if err != nil {
 				return nil
 			}
@@ -92,7 +90,7 @@ func (r *PodChaosMonkeyReconciler) GetListReplicaSet(ctx context.Context, name, 
 	lo := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace),
 	})
-	err := r.Client.List(context.TODO(), repList, lo)
+	err := r.Client.List(ctx, repList, lo)
 	if err != nil {
 		return returnList
 	}
@@ -112,25 +110,28 @@ func (r *PodChaosMonkeyReconciler) GetListPodsRunning(ctx context.Context, name,
 	lo := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace),
 	})
-	err := r.Client.List(context.TODO(), podList, lo)
+	err := r.Client.List(ctx, podList, lo)
 	if err != nil {
 		return returnList
 	}
+
 	for _, pod := range podList.Items {
-		if pod.ObjectMeta.OwnerReferences[0].Kind == "ReplicaSet" {
-			repList := r.GetListReplicaSet(ctx, name, namespace, kind, apiVersion)
-			for _, rep := range repList {
-				if rep.GetName() == pod.ObjectMeta.OwnerReferences[0].Name &&
-					rep.Kind == pod.ObjectMeta.OwnerReferences[0].Kind &&
-					rep.APIVersion == pod.ObjectMeta.OwnerReferences[0].APIVersion &&
-					pod.Status.Phase == "Running" {
+		if pod.ObjectMeta.OwnerReferences != nil {
+			if pod.ObjectMeta.OwnerReferences[0].Kind == "ReplicaSet" {
+				repList := r.GetListReplicaSet(ctx, name, namespace, kind, apiVersion)
+				for _, rep := range repList {
+					if rep.GetName() == pod.ObjectMeta.OwnerReferences[0].Name &&
+						rep.Kind == pod.ObjectMeta.OwnerReferences[0].Kind &&
+						rep.APIVersion == pod.ObjectMeta.OwnerReferences[0].APIVersion &&
+						pod.Status.Phase == "Running" {
+						returnList = append(returnList, pod)
+					}
+				}
+			} else {
+				if pod.ObjectMeta.OwnerReferences[0].Name == name && pod.ObjectMeta.OwnerReferences[0].Kind == kind &&
+					pod.ObjectMeta.OwnerReferences[0].APIVersion == apiVersion && pod.Status.Phase == "Running" {
 					returnList = append(returnList, pod)
 				}
-			}
-		} else {
-			if pod.ObjectMeta.OwnerReferences[0].Name == name && pod.ObjectMeta.OwnerReferences[0].Kind == kind &&
-				pod.ObjectMeta.OwnerReferences[0].APIVersion == apiVersion && pod.Status.Phase == "Running" {
-				returnList = append(returnList, pod)
 			}
 		}
 	}
@@ -139,13 +140,13 @@ func (r *PodChaosMonkeyReconciler) GetListPodsRunning(ctx context.Context, name,
 
 // Reconcile Object
 // Find and process a PodChaosMonkey Object, that matchs kind of object
-func (r *PodChaosMonkeyReconciler) ReconcileObject(ctx context.Context, req ctrl.Request, name, namespace, kind, apiVersion string) (ctrl.Result, error) {
+func (r *PodChaosMonkeyReconciler) ReconcileObject(ctx context.Context, name, namespace, kind, apiVersion string) (ctrl.Result, error) {
 	// log := log.FromContext(ctx)
 
 	chaosList := r.GetPodChaosMonkeyList(ctx, name, namespace, kind, apiVersion)
 	if chaosList != nil {
 		for _, chaos := range chaosList.Items {
-			ret, err := r.ReconcileChaos(ctx, req, chaos, name, namespace, kind, apiVersion)
+			ret, err := r.ReconcileChaos(ctx, chaos, name, namespace, kind, apiVersion)
 			if err != nil {
 				return ret, err
 			}
@@ -157,69 +158,68 @@ func (r *PodChaosMonkeyReconciler) ReconcileObject(ctx context.Context, req ctrl
 
 // Reconcile Object
 // Find and process a PodChaosMonkey Object, that matchs kind of object
-func (r *PodChaosMonkeyReconciler) ReconcileChaos(ctx context.Context, req ctrl.Request, chaos testingv1.PodChaosMonkey, name, namespace, kind, apiVersion string) (ctrl.Result, error) {
+func (r *PodChaosMonkeyReconciler) ReconcileChaos(ctx context.Context, chaos testingv1.PodChaosMonkey, name, namespace, kind, apiVersion string) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	podList := r.GetListPodsRunning(ctx, name, namespace, kind, apiVersion)
 	if int32(len(podList)) >= *chaos.Spec.Conditions.MinPods {
 		newList := []corev1.Pod{}
-		currTime := time.Now()
 		for _, pod := range podList {
-			duration := currTime.Sub(pod.ObjectMeta.CreationTimestamp.Time)
-			if int32(duration.Minutes()) >= *chaos.Spec.Conditions.MinRunning {
-				newList = append(newList, pod)
+			if pod.Status.ContainerStatuses[0].State.Running != nil {
+				currTime := time.Now()
+				duration := currTime.Sub(pod.Status.ContainerStatuses[0].State.Running.StartedAt.Time)
+				x := duration.Minutes()
+				var y float64 = 0.0
+				if chaos.Status.LastEvictionAt != nil {
+					currTime = time.Now()
+					y = currTime.Sub(chaos.Status.LastEvictionAt.Time).Minutes()
+				}
+				durationBetweenEvictions := float64(rand.Intn(int(*chaos.Spec.Conditions.MaxTimeRandom-*chaos.Spec.Conditions.MinTimeRandom)) + int(*chaos.Spec.Conditions.MinTimeRandom))
+				if int32(x) >= *chaos.Spec.Conditions.MinTimeRunning && (chaos.Status.LastEvictionAt == nil || y >= durationBetweenEvictions) {
+					newList = append(newList, pod)
+				}
 			}
 		}
 		if len(newList) > 0 {
 			random := rand.Intn(len(newList))
 			podToEvict := newList[random]
-			log.Info("Reconciling PodChaosMonkey", "Process", req.Name, "Going to Evict Pod", podToEvict.ObjectMeta.Name)
-
-			eviction := &policyv1.Eviction{
+			do := &client.DeleteOptions{}
+			client.GracePeriodSeconds(1).ApplyToDelete(do)
+			log.Info("Reconciling PodChaosMonkey", "Process", name, "Going to Evict Pod", podToEvict.ObjectMeta.Name)
+			var gracePeriodSeconds int64 = 1
+			if chaos.Spec.Conditions.GracePeriodSeconds != nil {
+				gracePeriodSeconds = *chaos.Spec.Conditions.GracePeriodSeconds
+			}
+			eviction := &policyv1beta1.Eviction{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: podToEvict.APIVersion,
+					Kind:       podToEvict.Kind,
+				},
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: podToEvict.Namespace,
-					Name:      podToEvict.Name,
+					Name:      podToEvict.ObjectMeta.Name,
+					Namespace: podToEvict.ObjectMeta.Namespace,
+				},
+				DeleteOptions: &metav1.DeleteOptions{
+					GracePeriodSeconds: &gracePeriodSeconds,
 				},
 			}
-			err := r.kubeclient.CoreV1().Pods(podToEvict.Namespace).Evict(context.TODO(), eviction)
+
+			err := r.KubeClient.PolicyV1beta1().Evictions(eviction.Namespace).Evict(ctx, eviction)
+			//err := r.Client.Delete(ctx, &podToEvict, do)
 			if err != nil {
 				log.Error(err, "Failed to Evict Pod", "Pod", podToEvict.ObjectMeta.Name)
 				return ctrl.Result{}, err
 			}
-			r.eventRecorder.Event(&podToEvict, apiv1.EventTypeNormal, "EvictedByChaosMonkey",
+			chaos.Status.LastEvictionAt = &metav1.Time{Time: time.Now()}
+			var num int32 = 1
+			if chaos.Status.NumberOfEvictions != nil {
+				num = *chaos.Status.NumberOfEvictions + 1
+			}
+			chaos.Status.NumberOfEvictions = &num
+			r.Client.Status().Update(ctx, &chaos)
+			log.Info("Reconciling PodChaosMonkey", "Going to Record Event", podToEvict.ObjectMeta.Name)
+			r.EventRecorder.Event(&podToEvict, apiv1.EventTypeNormal, "EvictedByChaosMonkey",
 				"Pod was evicted by Chaos Monkey.")
-		}
-	}
-	return ctrl.Result{}, nil
-}
-
-// Reconcile DaemonSet
-// Find and process a PodChaosMonkey Object, that matchs kind of object
-func (r *PodChaosMonkeyReconciler) ReconcileDaemonSet(ctx context.Context, req ctrl.Request, d *appsv1.DaemonSet) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-
-	log.Info("Reconciling PodChaosMonkey", "Process DaemonSet", req.Name)
-	return r.ReconcileObject(ctx, req, d.ObjectMeta.Name, d.ObjectMeta.Namespace, d.Kind, d.APIVersion)
-}
-
-// Reconcile StatefulSet
-// Find and process a PodChaosMonkey Object, that matchs kind of object
-func (r *PodChaosMonkeyReconciler) ReconcileStatefulSet(ctx context.Context, req ctrl.Request, st *appsv1.StatefulSet) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-	log.Info("Reconciling PodChaosMonkey", "Process StatefulSet", req.Name)
-	return r.ReconcileObject(ctx, req, st.ObjectMeta.Name, st.ObjectMeta.Namespace, st.Kind, st.APIVersion)
-}
-
-// Reconcile Deployment
-// Find and process a PodChaosMonkey Object, that matchs kind of object
-func (r *PodChaosMonkeyReconciler) ReconcileDeployment(ctx context.Context, req ctrl.Request, dep *appsv1.Deployment) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-	log.Info("Reconciling PodChaosMonkey", "Process Deployment", req.Name)
-	repList := r.GetListReplicaSet(ctx, dep.GetName(), dep.GetNamespace(), dep.Kind, dep.APIVersion)
-	for _, rep := range repList {
-		ret, err := r.ReconcileObject(ctx, req, rep.ObjectMeta.Name, rep.ObjectMeta.Namespace, rep.Kind, rep.APIVersion)
-		if err != nil {
-			return ret, err
 		}
 	}
 	return ctrl.Result{}, nil
@@ -227,9 +227,9 @@ func (r *PodChaosMonkeyReconciler) ReconcileDeployment(ctx context.Context, req 
 
 // Reconcile PodChaosMonkey
 // Find and process a PodChaosMonkey Object, that matchs kind of object
-func (r *PodChaosMonkeyReconciler) ReconcilePodChaosMonkey(ctx context.Context, req ctrl.Request, chaos testingv1.PodChaosMonkey) (ctrl.Result, error) {
+func (r *PodChaosMonkeyReconciler) ReconcilePodChaosMonkey(ctx context.Context, chaos testingv1.PodChaosMonkey) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
-	log.Info("Reconciling PodChaosMonkey", "Process PodChaosMonkey", req.Name)
+	log.Info("Reconciling PodChaosMonkey", "Process PodChaosMonkey", chaos.ObjectMeta.Name)
 
 	objList := &unstructured.UnstructuredList{
 		Object: map[string]interface{}{
@@ -238,17 +238,17 @@ func (r *PodChaosMonkeyReconciler) ReconcilePodChaosMonkey(ctx context.Context, 
 		},
 	}
 	lo := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-		//client.MatchingFields{"metadata.name": vpaName},
+		//client.MatchingFields{"metadata.name": chaos.ObjectMeta.Name}
 		client.InNamespace(chaos.ObjectMeta.Namespace),
 	})
-	err := r.Client.List(context.TODO(), objList, lo)
+	err := r.Client.List(ctx, objList, lo)
 	if err != nil {
 		log.Error(err, "Failed to list objects", "Kind", chaos.Spec.TargetRef.Kind, "Namespace", chaos.ObjectMeta.Namespace)
 		return ctrl.Result{}, err
 	}
 	for _, obj := range objList.Items {
 		if chaos.Spec.TargetRef.Name == "" || chaos.Spec.TargetRef.Name == obj.GetName() {
-			ret, err := r.ReconcileChaos(ctx, req, chaos, obj.GetName(), obj.GetNamespace(), obj.GetKind(), obj.GetAPIVersion())
+			ret, err := r.ReconcileChaos(ctx, chaos, obj.GetName(), obj.GetNamespace(), obj.GetKind(), obj.GetAPIVersion())
 			if err != nil {
 				return ret, err
 			}
@@ -266,45 +266,48 @@ func (r *PodChaosMonkeyReconciler) ReconcilePodChaosMonkey(ctx context.Context, 
 func (r *PodChaosMonkeyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Fetch the AutomaticVPA from the cache
-	chaosMonkey := &testingv1.PodChaosMonkey{}
-	err := r.Client.Get(ctx, req.NamespacedName, chaosMonkey)
-	if errors.IsNotFound(err) || err != nil {
-		obj := &appsv1.Deployment{}
-		err = r.Client.Get(ctx, req.NamespacedName, obj)
-		if errors.IsNotFound(err) && err != nil {
-			obj := &appsv1.DaemonSet{}
-			err = r.Client.Get(ctx, req.NamespacedName, obj)
-			if errors.IsNotFound(err) && err != nil {
-				obj := &appsv1.StatefulSet{}
-				err = r.Client.Get(ctx, req.NamespacedName, obj)
-				if errors.IsNotFound(err) && err != nil {
-					log.Info("Reconciling PodChaosMonkey", "Error", req.Name)
-					return ctrl.Result{}, err
-				} else {
-					// Reconcile StatefulSet
-					return r.ReconcileStatefulSet(ctx, req, obj)
-				}
-			} else {
-				// Process DaemonSet
-				return r.ReconcileDaemonSet(ctx, req, obj)
-			}
-		} else {
-			// Process Deployment
-			return r.ReconcileDeployment(ctx, req, obj)
-		}
-	}
 	log.Info("Reconciling PodChaosMonkey", "Process PodChaosMonkey", req.Name)
-	return r.ReconcilePodChaosMonkey(ctx, req, *chaosMonkey)
+
+	return ctrl.Result{}, nil
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *PodChaosMonkeyReconciler) Runnable(mgr ctrl.Manager, wg *sync.WaitGroup) {
+	defer wg.Done()
+	ctx := context.TODO()
+	log := log.FromContext(ctx)
+
+	// while true loop
+	for {
+		log.Info("Reconciling PodChaosMonkey", "Runnable PodChaosMonkey", "Get PodChaosMonkey List")
+		chaosList := &testingv1.PodChaosMonkeyList{}
+		lo := (&client.ListOptions{}).ApplyOptions([]client.ListOption{})
+		err := r.Client.List(ctx, chaosList, lo)
+		if err != nil {
+			log.Error(err, "Failed to list objects", "Kind", "ChaosList", "Namespace", "Error")
+			continue
+		}
+		for _, chaos := range chaosList.Items {
+			_, err := r.ReconcilePodChaosMonkey(ctx, chaos)
+			if err != nil {
+				log.Error(err, "Failed to ReconcilePodChaosMonkey", "Kind", "ChaosList", "Namespace", chaos.ObjectMeta.Name)
+				continue
+			}
+		}
+		time.Sleep(10000 * time.Millisecond)
+	}
+
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PodChaosMonkeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	//TODO set kubeconfig
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go r.Runnable(mgr, &wg)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&testingv1.PodChaosMonkey{}).
-		Watches(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForObject{}).
-		Watches(&source.Kind{Type: &appsv1.DaemonSet{}}, &handler.EnqueueRequestForObject{}).
-		Watches(&source.Kind{Type: &appsv1.StatefulSet{}}, &handler.EnqueueRequestForObject{}).
 		Complete(r)
+
 }
