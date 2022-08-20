@@ -14,6 +14,8 @@ make docker-push
 Debug steps
 ```
 --Login to Kubernetes
+make generate
+make manifests
 make install
 make run
 ```
@@ -28,7 +30,7 @@ make manifests
 Install steps:
 ```
 --Login to Kubernetes
-make deploy
+kubectl apply -f deploy/podchaosmonkeys.yaml
 ```
 
 Uninstall steps:
