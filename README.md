@@ -37,3 +37,9 @@ Uninstall steps:
 make undeploy
 ```
 
+Demo sample:
+```
+kubectl create namespace demo-chaos
+kubectl apply -f examples/hamster.yaml -n demo-chaos
+kubectl apply -f examples/hamster-chaos.yaml -n demo-chaos
+```
