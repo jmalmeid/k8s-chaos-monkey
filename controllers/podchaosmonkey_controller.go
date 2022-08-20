@@ -49,6 +49,9 @@ type PodChaosMonkeyReconciler struct {
 // +kubebuilder:rbac:groups=testing.chaos.io,resources=podchaosmonkeys,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=testing.chaos.io,resources=podchaosmonkeys/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=testing.chaos.io,resources=podchaosmonkeys/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=daemonset,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=statefulset,verbs=get;list;watch
 
 // Get List of PodChaosMonkey Objects
 func (r *PodChaosMonkeyReconciler) GetPodChaosMonkeyList(ctx context.Context, name, namespace, kind, apiVersion string) *testingv1.PodChaosMonkeyList {
