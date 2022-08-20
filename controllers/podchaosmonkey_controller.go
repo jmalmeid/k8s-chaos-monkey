@@ -50,8 +50,12 @@ type PodChaosMonkeyReconciler struct {
 // +kubebuilder:rbac:groups=testing.chaos.io,resources=podchaosmonkeys/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=testing.chaos.io,resources=podchaosmonkeys/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
-// +kubebuilder:rbac:groups=apps,resources=daemonset,verbs=get;list;watch
-// +kubebuilder:rbac:groups=apps,resources=statefulset,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=pods/eviction,verbs=create
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Get List of PodChaosMonkey Objects
 func (r *PodChaosMonkeyReconciler) GetPodChaosMonkeyList(ctx context.Context, name, namespace, kind, apiVersion string) *testingv1.PodChaosMonkeyList {
@@ -282,6 +286,8 @@ func (r *PodChaosMonkeyReconciler) Runnable(mgr ctrl.Manager, wg *sync.WaitGroup
 	ctx := context.TODO()
 	log := log.FromContext(ctx)
 
+	time.Sleep(10000 * time.Millisecond)
+	log.Info("PodChaosMonkey Reconciler is running")
 	// while true loop
 	for {
 		log.Info("Runnable PodChaosMonkey", "PodChaosMonkey", "Get PodChaosMonkey List")

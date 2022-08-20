@@ -6,9 +6,16 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
   - apps
   resources:
-  - daemonset
+  - daemonsets
   verbs:
   - get
   - list
@@ -24,11 +31,33 @@ rules:
 - apiGroups:
   - apps
   resources:
-  - statefulset
+  - replicasets
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/eviction
+  verbs:
+  - create
 - apiGroups:
   - testing.chaos.io
   resources:
