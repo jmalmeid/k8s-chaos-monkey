@@ -18,6 +18,13 @@ make install
 make run
 ```
 
+Generate deploy yaml:
+```
+make generate
+make manifests
+./bin/kustomize build config/default > deploy/podchaosmonkeys.yaml
+```
+
 Install steps:
 ```
 --Login to Kubernetes
