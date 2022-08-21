@@ -55,7 +55,7 @@ type PodChaosMonkeyConditions struct {
 	MinTimeRunning *int32 `json:"minTimeRunning" protobuf:"varint,2,name=minRunning"`
 	// Minimal Random time in minutes between two consecutive pod evictions
 	MinTimeRandom *int32 `json:"minTimeRandom" protobuf:"varint,3,name=minTimeRandom"`
-	// Minimal Random time in minutes between two consecutive pod evictions
+	// Maximum Random time in minutes between two consecutive pod evictions
 	MaxTimeRandom *int32 `json:"maxTimeRandom" protobuf:"varint,4,name=maxTimeRandom"`
 	// Grace period for pod termination
 	// +optional

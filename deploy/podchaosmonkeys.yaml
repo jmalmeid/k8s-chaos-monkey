@@ -47,7 +47,7 @@ spec:
                     format: int64
                     type: integer
                   maxTimeRandom:
-                    description: Minimal Random time in minutes between two consecutive pod evictions
+                    description: Maximum Random time in minutes between two consecutive pod evictions
                     format: int32
                     type: integer
                   minPods:
