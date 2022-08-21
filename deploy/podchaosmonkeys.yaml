@@ -74,7 +74,7 @@ spec:
                     description: API version of the target
                     type: string
                   kind:
-                    description: 'Kind of the target; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"'
+                    description: 'Kind Object of the target; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"'
                     type: string
                   name:
                     description: 'Name of the target; More info: http://kubernetes.io/docs/user-guide/identifiers#names'

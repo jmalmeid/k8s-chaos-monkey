@@ -57,7 +57,7 @@ spec:
   targetRef:
     # API version of the target
     apiVersion: "apps/v1"
-    # Kind of the target
+    # Kind Object of the target
     kind: Deployment
     # Name of the target
     # +optional (if all names)
