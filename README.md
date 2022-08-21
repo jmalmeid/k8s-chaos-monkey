@@ -43,8 +43,8 @@ Demo sample:
 ```
 --Login to Kubernetes
 kubectl create namespace demo-chaos
-kubectl apply -f examples/hamster.yaml -n demo-chaos
-kubectl apply -f examples/hamster-chaos.yaml -n demo-chaos
+kubectl apply -f demo/hamster.yaml -n demo-chaos
+kubectl apply -f demo/hamster-chaos.yaml -n demo-chaos
 ```
 
 Demo CRD:
