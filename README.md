@@ -46,3 +46,25 @@ kubectl create namespace demo-chaos
 kubectl apply -f examples/hamster.yaml -n demo-chaos
 kubectl apply -f examples/hamster-chaos.yaml -n demo-chaos
 ```
+
+Demo CRD:
+```yaml
+apiVersion: "testing.chaos.io/v1"
+kind: PodChaosMonkey
+metadata:
+  name: hamster-chaos
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: hamster
+  conditions:
+    # Minimal number of pods which need to be alive
+    minPods: 2
+    # Minimal time in minutes that has to be running
+    minTimeRunning: 10
+    # Minimal Random time in minutes between two consecutive pod evictions
+    minTimeRandom: 10
+    # Maximum Random time in minutes between two consecutive pod evictions 
+    maxTimeRandom: 30
+```
