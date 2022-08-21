@@ -37,12 +37,12 @@ type PodChaosMonkeySpec struct {
 
 // CrossVersionObjectReference contains enough information to let you identify the referred resource.
 type CrossVersionObjectReference struct {
-	// Kind of the referent; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
+	// Kind of the target; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
 	Kind string `json:"kind" protobuf:"bytes,1,name=kind"`
-	// Name of the referent; More info: http://kubernetes.io/docs/user-guide/identifiers#names
+	// Name of the target; More info: http://kubernetes.io/docs/user-guide/identifiers#names
 	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,2,opt,name=name"`
-	// API version of the referent
+	// API version of the target
 	APIVersion string `json:"apiVersion" protobuf:"bytes,3,name=apiVersion"`
 }
 

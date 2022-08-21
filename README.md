@@ -55,8 +55,12 @@ metadata:
   name: hamster-chaos
 spec:
   targetRef:
+    # API version of the target
     apiVersion: "apps/v1"
+    # Kind of the target
     kind: Deployment
+    # Name of the target
+    # +optional (if all names)
     name: hamster
   conditions:
     # Minimal number of pods which need to be alive
@@ -67,4 +71,7 @@ spec:
     minTimeRandom: 10
     # Maximum Random time in minutes between two consecutive pod evictions 
     maxTimeRandom: 30
+    # Grace period for pod termination
+    # +optional
+    # gracePeriodSeconds: 1
 ```
